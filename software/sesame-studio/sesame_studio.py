@@ -1,8 +1,17 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import json
 import os
 import ctypes
+from pathlib import Path
+
+from frame import frame_segments
+
+
+STUDIO_DIR = Path(__file__).resolve().parent
+
+
+def asset_path(name):
+    return STUDIO_DIR / name
 
 class SesameStudioApp:
     def __init__(self, root):
@@ -16,7 +25,7 @@ class SesameStudioApp:
         except Exception:
             pass
         
-        icon_path = os.path.join(os.path.dirname(__file__), "assets", "sesame-sticker2.png")
+        icon_path = asset_path("assets/sesame-sticker2.png")
         if os.name == "nt" and os.path.exists(icon_path): # this crashes on some linux
             try:
                 from PIL import Image, ImageTk
@@ -83,8 +92,8 @@ class SesameStudioApp:
         self.code_text.pack(fill=tk.BOTH, expand=True)
 
         if hasattr(self, 'servo_colors'):
-            for i in range(8):
-                self.code_text.tag_configure(f"servo_{i}", foreground=self.servo_colors[i])
+            for servo, color in self.servo_colors.items():
+                self.code_text.tag_configure(f"servo_{servo}", foreground=color)
         
         self.btn_copy = tk.Button(self.main_frame, text="Copy to Clipboard", command=self.copy_code, bg="#27ae60", fg="white", font=("Segoe UI", 10, "bold"), pady=8, relief=tk.FLAT)
         self.btn_copy.pack(fill=tk.X, pady=(10, 0))
@@ -99,8 +108,8 @@ class SesameStudioApp:
             target_w, target_h = 740, 380
             current_y = 0
             
-            if os.path.exists("sesame-topdown.png"):
-                pil_img1 = Image.open("sesame-topdown.png")
+            if asset_path("sesame-topdown.png").is_file():
+                pil_img1 = Image.open(asset_path("sesame-topdown.png"))
                 ratio1 = min(target_w / pil_img1.size[0], target_h / pil_img1.size[1])
                 new_size1 = (int(pil_img1.size[0] * ratio1), int(pil_img1.size[1] * ratio1))
                 pil_img1 = pil_img1.resize(new_size1, Image.Resampling.LANCZOS)
@@ -108,8 +117,8 @@ class SesameStudioApp:
                 self.canvas.create_image(380, current_y, image=self.robot_image1, anchor="n")
                 current_y += new_size1[1]
             
-            if os.path.exists("sesame-angle-guide.png"):
-                pil_img2 = Image.open("sesame-angle-guide.png")
+            if asset_path("sesame-angle-guide.png").is_file():
+                pil_img2 = Image.open(asset_path("sesame-angle-guide.png"))
                 ratio2 = min(target_w / pil_img2.size[0], target_h / pil_img2.size[1])
                 new_size2 = (int(pil_img2.size[0] * ratio2), int(pil_img2.size[1] * ratio2))
                 pil_img2 = pil_img2.resize(new_size2, Image.Resampling.LANCZOS)
@@ -122,13 +131,13 @@ class SesameStudioApp:
         except ImportError:
             try:
                 y_pos = 0
-                if os.path.exists("sesame-topdown.png"):
-                    self.robot_image1 = tk.PhotoImage(file="sesame-topdown.png").subsample(5, 5)
+                if asset_path("sesame-topdown.png").is_file():
+                    self.robot_image1 = tk.PhotoImage(file=asset_path("sesame-topdown.png")).subsample(5, 5)
                     self.canvas.create_image(380, y_pos, image=self.robot_image1, anchor="n")
                     y_pos += self.robot_image1.height()
                 
-                if os.path.exists("sesame-angle-guide.png"):
-                    self.robot_image2 = tk.PhotoImage(file="sesame-angle-guide.png").subsample(5, 5)
+                if asset_path("sesame-angle-guide.png").is_file():
+                    self.robot_image2 = tk.PhotoImage(file=asset_path("sesame-angle-guide.png")).subsample(5, 5)
                     self.canvas.create_image(380, y_pos, image=self.robot_image2, anchor="n")
                     y_pos += self.robot_image2.height()
                 
@@ -152,14 +161,14 @@ class SesameStudioApp:
         ]
         
         self.servo_colors = {
-            0: "#FFFFFF", 
-            1: "#FF69B4", 
-            2: "#9370DB", 
-            3: "#FF2600", 
-            4: "#00CED1", 
-            5: "#FFA500", 
-            6: "#32CD32", 
-            7: "#FFF23B"  
+            "L1": "#FFFFFF",
+            "L3": "#FF69B4",
+            "R1": "#9370DB",
+            "R3": "#FF2600",
+            "L2": "#00CED1",
+            "L4": "#FFA500",
+            "R2": "#32CD32",
+            "R4": "#FFF23B"
         }
 
 
@@ -185,47 +194,19 @@ class SesameStudioApp:
 
     def add_frame(self):
         try:
-            delay = int(self.delay_var.get())
-        except ValueError:
-            messagebox.showerror("Error", "Delay must be a number")
+            segments = frame_segments(
+                {servo: value.get() for servo, value in self.servo_vars.items()},
+                self.delay_var.get(),
+            )
+        except ValueError as error:
+            messagebox.showerror("Error", str(error))
             return
 
-        self.code_text.insert(tk.END, "// Frame\n")
-        
-        def insert_command(servo_idx, angle):
-            command_str = f"setServoAngle({servo_idx}, {angle}); "
-            self.code_text.insert(tk.END, command_str, f"servo_{servo_idx}")
-
-        for i in ["R1","L2"]:
-            try:
-                val = int(self.servo_vars[i].get())
-                if val < 45 or val > 180: raise ValueError
-                insert_command(i, val)
-            except ValueError:
-                messagebox.showerror("Error", f"Invalid angle for Servo {i}, range is 45 - 180")
-                return
-        
-        for i in ["R2","L1"]:
-            try:
-                val = int(self.servo_vars[i].get())
-                if val < 0 or val > 135: raise ValueError
-                insert_command(i, val)
-            except ValueError:
-                messagebox.showerror("Error", f"Invalid angle for Servo {i}, range is 0 - 135")
-                return
-        
-        self.code_text.insert(tk.END, "\n")
-        for i in ["R3","R4","L3","L4"]:
-            try:
-                val = int(self.servo_vars[i].get())
-                if val < 0 or val > 180: raise ValueError
-                insert_command(i, val)
-            except ValueError:
-                messagebox.showerror("Error", f"Invalid angle for Servo {i}, range is 0 - 180")
-                return
-        self.code_text.insert(tk.END, "\n")
-        
-        self.code_text.insert(tk.END, f"delay({delay});\n\n")
+        for text, tag in segments:
+            if tag is None:
+                self.code_text.insert(tk.END, text)
+            else:
+                self.code_text.insert(tk.END, text, tag)
         self.code_text.see(tk.END)
         self.status_label.config(text="Frame added successfully")
 
